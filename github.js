@@ -1,5 +1,13 @@
 // github.js
-export default async function searchGithub(query) {
+export default async function searchGithub(keyword, language) {
+    // 1. Build the query using the OR-concatenated keywords and exclude dead repos
+    let query = `${keyword} archived:false`;
+    
+    // 2. Append language if the agent decided to use it
+    if (language) {
+        query += ` language:${language}`;
+    }
+
     const endpoint = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}`;
     
     try {
@@ -15,7 +23,9 @@ export default async function searchGithub(query) {
         if (!response.ok) return `GitHub API Error: ${response.status} ${response.statusText}`;
 
         const data = await response.json();
-        if (!data.items || data.items.length === 0) return "No results found for this query.";
+        if (!data.items || data.items.length === 0) {
+            return "No results found for this query. Trigger FALLBACK step and try broader keywords.";
+        }
 
         const cleanResults = data.items.slice(0, 5).map(item => ({
             repo_name: item.full_name,

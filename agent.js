@@ -1,45 +1,50 @@
 // agent.js
 import OpenAI from "openai";
-// 1. Updated import to grab all three functions
 import searchGithub, { getFolderStructure, getReadme } from "./github.js"; 
 
 const openai = new OpenAI();
 
+// 1. System Prompt updated for "OR" searching and MULTIPLE recommendations
 const conversationHistory = [
     { 
         role: "system", 
         content: `You are an expert Salesforce Developer Assistant. Your primary job is to find high-quality open-source Salesforce projects and explain their architecture.
 
-When a user asks for an implementation, integration, or code example, you MUST follow this exact execution sequence. Do not ask for permission to proceed to the next step:
+When a user asks for an implementation, pastes documentation, or asks for code examples, you MUST follow this exact execution sequence. Do not ask for permission to proceed to the next step:
 
-1. SEARCH: Automatically use the \`search_github\` tool to find relevant repositories.
-2. SELECT: Analyze the results and pick the SINGLE best repository based on relevance and stars.
-3. INVESTIGATE: Immediately use the \`get_readme\` AND \`get_folder_structure\` tools on that specific chosen repository to understand how it works.
-4. REPORT: Only after you have gathered the README and folder data, provide your final response to the user.
+1. ANALYZE: Before searching, evaluate the user's input. Extract 2 to 3 unique technical identifiers (e.g., 'commerce/einsteinAPI', 'ProductRecommendationsAdapter').
+2. SEARCH: Automatically use the \`search_github\` tool. Combine your extracted keywords using the capitalized 'OR' operator to cast a wider net and find multiple approaches (e.g., 'einsteinAPI OR ProductRecommendationsAdapter').
+3. FALLBACK (If necessary): If the search returns "No results found", brainstorm broader concepts or synonyms and call \`search_github\` again.
+4. EVALUATE CANDIDATES: Look at the search results. You MUST use the \`get_readme\` tool on the top 2 or 3 most promising repositories to verify they contain robust implementations.
+5. INVESTIGATE: Use the \`get_folder_structure\` tool on ALL the valid candidate repositories you evaluated to map out their individual architectures.
+6. REPORT: After gathering the README and folder data, provide a comprehensive final response to the user comparing the options.
 
-Your final response must include:
-- The name and URL of the recommended repository.
+Your final response MUST include a distinct section for EACH recommended repository containing:
+- The name and URL of the repository.
 - A summary of how to install/use it (derived from the README).
 - A brief overview of the architecture (e.g., "The main logic is located in the force-app/main/default/classes folder...").` 
     }
 ];
 
-// 2. Add the two new tools to the array
 const tools = [
     {
         type: "function",
         function: {
             name: "search_github",
-            description: "Searches GitHub for entire repositories related to a specific topic.",
+            description: "Searches GitHub for repositories. Supports multiple keywords joined by ' OR '.",
             parameters: {
                 type: "object",
                 properties: {
-                    query: {
+                    keyword: {
                         type: "string",
-                        description: "The formatted GitHub search query (e.g., 'B2B Commerce language:apex')"
+                        description: "The keywords extracted from the user's prompt, concatenated with ' OR ' (e.g., 'B2B Commerce OR ProductRecommendationsAdapter')"
+                    },
+                    language: {
+                        type: "string",
+                        description: "The programming language (e.g., 'apex', 'javascript'). Leave empty if not specified."
                     }
                 },
-                required: ["query"]
+                required: ["keyword"]
             }
         }
     },
@@ -88,10 +93,10 @@ export async function runAgent(userMessage) {
 
     let isAgentFinished = false;
 
-    // 3. The Agentic Loop
     while (!isAgentFinished) {
         const response = await openai.chat.completions.create({
             model: "gpt-4o", 
+            temperature: 0.8, 
             messages: conversationHistory,
             tools: tools,
             tool_choice: "auto"
@@ -105,10 +110,9 @@ export async function runAgent(userMessage) {
                 const args = JSON.parse(toolCall.function.arguments);
                 let toolResult = "";
 
-                // 4. Route the AI's request to the correct function
                 if (toolCall.function.name === "search_github") {
-                    console.log(`\x1b[33m[Agent is thinking...] Executing GitHub Search for: ${args.query}\x1b[0m`);
-                    toolResult = await searchGithub(args.query);
+                    console.log(`\x1b[33m[Agent is thinking...] Executing GitHub Search for: ${args.keyword}\x1b[0m`);
+                    toolResult = await searchGithub(args.keyword, args.language);
                 } 
                 else if (toolCall.function.name === "get_folder_structure") {
                     console.log(`\x1b[33m[Agent is thinking...] Reading folder structure for: ${args.repoFullName}\x1b[0m`);
