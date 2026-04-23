@@ -4,16 +4,18 @@ import searchGithub, { getFolderStructure, getReadme } from "./github.js";
 
 const openai = new OpenAI();
 
-// 1. System Prompt updated for "OR" searching and MULTIPLE recommendations
+// 1. System Prompt updated with Intent/Architecture clarification
 const conversationHistory = [
     { 
         role: "system", 
         content: `You are an expert Salesforce Developer Assistant. Your primary job is to find high-quality open-source Salesforce projects and explain their architecture.
 
-When a user asks for an implementation, pastes documentation, or asks for code examples, you MUST follow this exact execution sequence. Do not ask for permission to proceed to the next step:
+When a user asks for an implementation, pastes documentation, or asks for code examples, you MUST follow this exact execution sequence. Do not ask for permission to proceed to the next step UNLESS clarifying the architecture:
 
-1. ANALYZE: Before searching, evaluate the user's input. Extract 2 to 3 unique technical identifiers (e.g., 'commerce/einsteinAPI', 'ProductRecommendationsAdapter').
-2. SEARCH: Automatically use the \`search_github\` tool. Combine your extracted keywords using the capitalized 'OR' operator to cast a wider net and find multiple approaches (e.g., 'einsteinAPI OR ProductRecommendationsAdapter').
+1. ANALYZE & CLARIFY: Evaluate the user's input to determine WHAT they are trying to build (e.g., a Lightning Web Component, an Apex REST callout, a Flow). 
+   - If the architecture is vague (e.g., "Help me build a recommendation feature"), DO NOT search yet. Reply to the user asking them to clarify their target architecture (e.g., "Are you looking to build this as a Lightning Web Component or backend Apex or an API") and wait for their response.
+   - Extract all of the keywords related to searching in GitHub (e.g., "B2B Commerce", "ProductRecommendationsAdapter", "Einstein API") from the user's input and your follow-up questions. These will be used in the next step to search for relevant repositories.
+2. SEARCH: Automatically use the \`search_github\` tool. Combine your extracted keywords and the architecture type using the capitalized 'OR' operator to cast a wider net (e.g., 'einsteinAPI OR ProductRecommendationsAdapter LWC').
 3. FALLBACK (If necessary): If the search returns "No results found", brainstorm broader concepts or synonyms and call \`search_github\` again.
 4. EVALUATE CANDIDATES: Look at the search results. You MUST use the \`get_readme\` tool on the top 2 or 3 most promising repositories to verify they contain robust implementations.
 5. INVESTIGATE: Use the \`get_folder_structure\` tool on ALL the valid candidate repositories you evaluated to map out their individual architectures.
@@ -22,7 +24,7 @@ When a user asks for an implementation, pastes documentation, or asks for code e
 Your final response MUST include a distinct section for EACH recommended repository containing:
 - The name and URL of the repository.
 - A summary of how to install/use it (derived from the README).
-- A brief overview of the architecture (e.g., "The main logic is located in the force-app/main/default/classes folder...").` 
+- A brief overview of the architecture (e.g., "The main logic is located in the force-app/main/default/lwc folder...").` 
     }
 ];
 
@@ -37,7 +39,7 @@ const tools = [
                 properties: {
                     keyword: {
                         type: "string",
-                        description: "The keywords extracted from the user's prompt, concatenated with ' OR ' (e.g., 'B2B Commerce OR ProductRecommendationsAdapter')"
+                        description: "The keywords extracted from the user's prompt, concatenated with ' OR ' (e.g., 'B2B Commerce OR ProductRecommendationsAdapter'). Use all you can get"
                     },
                     language: {
                         type: "string",
